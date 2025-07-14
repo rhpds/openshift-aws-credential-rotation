@@ -2,14 +2,16 @@
 
 This Ansible project automates the credential rotation process for OpenShift Container Platform (OCP) clusters using the Cloud Credential Operator (CCO) in `mint` mode on AWS.
 
+The steps outlined in the documentation can be found [here](https://docs.redhat.com/en/documentation/openshift_container_platform/4.12/html/authentication_and_authorization/managing-cloud-provider-credentials#mint-mode-with-removal-or-rotation-of-admin-credential_cco-mode-mint)
+
 ## Overview
 
 This automation handles the complete credential rotation workflow:
 1. Retrieves the OpenShift cluster infrastructure name (GUID)
-2. Generates new AWS access keys for the `ocp-credential-manager-<GUID>` IAM user
-3. Updates the `aws-creds` secret in the `kube-system` namespace
-4. Deletes all component secrets to trigger CCO rotation
-5. Cleans up the old AWS access key
+2. Cleans up the old AWS access key for the `ocp-credential-manager-<GUID>` IAM user
+3. Generates new AWS access keys for the `ocp-credential-manager-<GUID>` IAM user
+4. Updates the `aws-creds` secret in the `kube-system` namespace with the new key
+5. Deletes all secret components in OCP to trigger CCO rotation
 
 ## Prerequisites
 
@@ -20,7 +22,6 @@ This automation handles the complete credential rotation workflow:
 
 ### 2. AWS Requirements
 - AWS CLI configured with appropriate profile
-- IAM user `ocp-credential-manager-<GUID>` must exist (created by CCO)
 - AWS profile with permissions to manage the CCO IAM user
 
 ### 3. System Requirements
@@ -85,7 +86,7 @@ The AWS profile specified in `aws_profile` must have the following permissions o
 ```
 
 ### CCO IAM User Permissions
-The `ocp-credential-manager-<GUID>` IAM user must have the following permissions for CCO operations:
+The `ocp-credential-manager-<GUID>` IAM user will have the following permissions for CCO operations according to the [official documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/4.12/html/authentication_and_authorization/managing-cloud-provider-credentials#mint-mode-permissions-aws):
 
 ```json
 {
@@ -197,7 +198,12 @@ oc logs -n openshift-cloud-credential-operator deployment/cloud-credential-opera
 oc get credentialsrequest -n openshift-cloud-credential-operator
 ```
 
-3. Check that all AWS services are working properly in your cluster.
+3. For security reasons, you may want to delete the newly created access key for the root AWS credentials:
+```bash
+aws iam delete-access-key --user-name {{ iam_user_name }} --access-key-id <ACCESS_KEY_ID>
+```
+
+4. Check that all AWS services are working properly in your cluster.
 
 ## Security Considerations
 
@@ -215,7 +221,7 @@ oc get credentialsrequest -n openshift-cloud-credential-operator
    - Verify the cluster infrastructure name matches the IAM user suffix
 
 2. **"aws-creds secret not found"**
-   - Check that CCO is running and properly configured
+   - Check that CCO is running and properly configured. The creation of this secret is handled by the CCO
    - Verify the cluster is in mint mode (not STS/manual mode)
 
 3. **"Permission denied"**
@@ -223,7 +229,7 @@ oc get credentialsrequest -n openshift-cloud-credential-operator
    - Check that kubeconfig has cluster-admin permissions
 
 4. **"Component secrets not recreated"**
-   - Monitor CCO logs for errors
+   - This operation is handled by the CCO. Monitor CCO logs for errors
    - Check CredentialsRequest resources for issues
 
 ### Logs
@@ -243,8 +249,7 @@ creds_rotation_2.0/
 ├── roles/
 │   ├── aws_cco_rotation/
 │   │   └── tasks/
-│   │       ├── main.yml                 # AWS IAM operations
-│   │       └── cleanup.yml              # Old key cleanup
+│   │       └── main.yml                 # AWS IAM operations
 │   └── k8s_secrets/
 │       └── tasks/
 │           └── main.yml                 # Kubernetes secret management
@@ -260,7 +265,28 @@ creds_rotation_2.0/
 
 ## License
 
-[Add your license here]
+This project is licensed under the GNU General Public License v2.0 - see below for details.
+
+```
+OpenShift Cloud Credential Operator (CCO) AWS Credential Rotation Automation
+Copyright (C) 2024
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+```
+
+For the complete license text, visit: https://www.gnu.org/licenses/gpl-2.0.html
 
 ## Support
 
