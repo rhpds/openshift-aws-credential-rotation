@@ -35,14 +35,14 @@
 
 - name: Display IAM user creation result
   debug:
-    msg: |
+    msg: |-
       {% if iam_user_creation.changed %}
       ✅ Created new IAM user: {{ iam_user_name }}
       {% else %}
       ✅ IAM user already exists: {{ iam_user_name }}
       {% endif %}
 
-- name: Attach CCO permissions policy to IAM user
+- name: Ensure CCO permissions policy is attached to IAM user
   amazon.aws.iam_policy:
     iam_type: user
     iam_name: "{{ iam_user_name }}"
@@ -59,7 +59,7 @@
   debug:
     msg: "Found {{ existing_access_keys.access_keys | length }} existing access keys for user {{ iam_user_name }}"
 
-- name: Delete all existing access keys for IAM user
+- name: Ensure all existing access keys for IAM user are deleted
   amazon.aws.iam_access_key:
     user_name: "{{ iam_user_name }}"
     id: "{{ item.access_key_id }}"
@@ -67,14 +67,14 @@
   loop: "{{ existing_access_keys.access_keys }}"
   when: existing_access_keys.access_keys | length > 0
 
-- name: Create new AWS access key for IAM user
+- name: Ensure new AWS access key is created for IAM user
   amazon.aws.iam_access_key:
     user_name: "{{ iam_user_name }}"
     state: present
   register: new_aws_creds
   no_log: true
 
-- name: Verify new access key was created
+- name: Verify new access key exists
   debug:
     msg: "New access key created successfully for user {{ iam_user_name }}"
   when: new_aws_creds.access_key is defined
@@ -85,7 +85,7 @@
     new_secret_access_key_b64: "{{ new_aws_creds.secret_access_key | b64encode }}"
   no_log: true
 
-- name: Confirm all old access keys deleted
+- name: Verify all old access keys deleted
   debug:
     msg: "Deleted {{ existing_access_keys.access_keys | length }} existing access keys for user {{ iam_user_name }}"
   when: existing_access_keys.access_keys | length > 0 

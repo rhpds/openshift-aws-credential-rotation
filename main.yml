@@ -23,7 +23,7 @@
   pre_tasks:
     - name: Display configuration being used
       debug:
-        msg: |
+        msg: |-
           Configuration:
           - AWS Profile: {{ aws_profile }}
           - Kubeconfig Path: {{ kubeconfig_path }}
@@ -72,16 +72,11 @@
       
     - role: k8s_secrets
       tags: [kubernetes, secrets]
-
-  tasks:
-    - name: Verify final AWS access key state
-      include_tasks: roles/aws_cco_rotation/tasks/cleanup.yml
-      tags: [aws, verification]
       
   post_tasks:
     - name: Credential rotation completed successfully
       debug:
-        msg: |
+        msg: |-
           AWS CCO credential rotation completed successfully!
           - All old AWS access keys deleted for {{ iam_user_name }}
           - New AWS credentials generated for {{ iam_user_name }}
@@ -90,8 +85,13 @@
           
     - name: Important reminder
       debug:
-        msg: |
-          IMPORTANT: Monitor the Cloud Credential Operator logs to ensure
+        msg: |-
+          IMPORTANT: You can monitor the Cloud Credential Operator logs to ensure
           all component credentials are properly recreated:
           
-          oc logs -n openshift-cloud-credential-operator deployment/cloud-credential-operator -f 
+          oc logs -n openshift-cloud-credential-operator deployment/cloud-credential-operator -f
+          
+          SECURITY NOTE: After completing cluster operations (upgrades, etc.),
+          delete the access key from IAM user {{ iam_user_name }} for security, either from the console or using the following command:
+          
+          aws iam delete-access-key --user-name {{ iam_user_name }} --access-key-id <ACCESS_KEY_ID> 

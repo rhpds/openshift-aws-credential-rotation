@@ -36,10 +36,6 @@
     merge_type: merge
   no_log: true
 
-- name: Verify aws-creds secret was updated
-  debug:
-    msg: "Successfully updated aws-creds secret with new credentials"
-
 - name: Get all CredentialsRequests for AWS
   kubernetes.core.k8s_info:
     api_version: cloudcredential.openshift.io/v1
@@ -69,16 +65,12 @@
   loop: "{{ component_secrets_list }}"
   when: component_secrets_list | length > 0
 
-- name: Confirm component secrets deletion
-  debug:
-    msg: "Deleted {{ component_secrets_list | length }} component secrets. CCO will recreate them with new credentials."
-
 - name: Wait for CCO to start recreating secrets
   pause:
     seconds: 10
     prompt: "Waiting for Cloud Credential Operator to detect changes..."
 
-- name: Check CCO deployment status
+- name: Get CCO deployment
   kubernetes.core.k8s_info:
     api_version: apps/v1
     kind: Deployment
