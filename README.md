@@ -1,0 +1,270 @@
+# OpenShift CCO Credential Rotation Automation
+
+This Ansible project automates the credential rotation process for OpenShift Container Platform (OCP) clusters using the Cloud Credential Operator (CCO) in `mint` mode on AWS.
+
+## Overview
+
+This automation handles the complete credential rotation workflow:
+1. Retrieves the OpenShift cluster infrastructure name (GUID)
+2. Generates new AWS access keys for the `ocp-credential-manager-<GUID>` IAM user
+3. Updates the `aws-creds` secret in the `kube-system` namespace
+4. Deletes all component secrets to trigger CCO rotation
+5. Cleans up the old AWS access key
+
+## Prerequisites
+
+### 1. OpenShift Cluster Requirements
+- OpenShift cluster running on AWS
+- Cloud Credential Operator (CCO) configured in `mint` mode
+- Valid kubeconfig file with cluster-admin permissions
+
+### 2. AWS Requirements
+- AWS CLI configured with appropriate profile
+- IAM user `ocp-credential-manager-<GUID>` must exist (created by CCO)
+- AWS profile with permissions to manage the CCO IAM user
+
+### 3. System Requirements
+- Python 3.8+
+- Ansible 2.15+
+- Required Python packages (installed automatically):
+  - `kubernetes`
+  - `boto3`
+  - `botocore`
+
+## Installation
+
+1. Clone this repository:
+```bash
+git clone <repository-url>
+cd creds_rotation_2.0
+```
+
+2. Create and activate a Python virtual environment:
+```bash
+python3 -m venv venv
+source venv/bin/activate  # On Linux/Mac
+# or
+venv\Scripts\activate     # On Windows
+```
+
+3. Install Ansible:
+```bash
+pip install ansible
+```
+
+4. Install required Ansible collections:
+```bash
+ansible-galaxy collection install -r requirements.yml
+```
+
+The playbook uses the following collections:
+- `amazon.aws` - Official AWS collection for IAM operations
+- `kubernetes.core` - Kubernetes/OpenShift cluster interactions
+
+## IAM Permissions
+
+### AWS Profile Permissions
+The AWS profile specified in `aws_profile` must have the following permissions on the `ocp-credential-manager-<GUID>` IAM user:
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "iam:ListAccessKeys",
+                "iam:CreateAccessKey",
+                "iam:DeleteAccessKey",
+                "iam:GetUser"
+            ],
+            "Resource": "arn:aws:iam::*:user/ocp-credential-manager-*"
+        }
+    ]
+}
+```
+
+### CCO IAM User Permissions
+The `ocp-credential-manager-<GUID>` IAM user must have the following permissions for CCO operations:
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "iam:CreateAccessKey",
+                "iam:CreateUser",
+                "iam:DeleteAccessKey",
+                "iam:DeleteUser",
+                "iam:DeleteUserPolicy",
+                "iam:GetUser",
+                "iam:GetUserPolicy",
+                "iam:ListAccessKeys",
+                "iam:PutUserPolicy",
+                "iam:TagUser",
+                "iam:SimulatePrincipalPolicy"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+```
+
+## Configuration
+
+### IAM Policy Customization
+
+The CCO IAM policy is defined in `group_vars/all.yml` and can be customized if needed:
+
+```yaml
+# IAM Policy Configuration
+cco_iam_policy_name: "CCOCredentialRotationPolicy"
+cco_iam_policy_document:
+  Version: "2012-10-17"
+  Statement:
+    - Effect: "Allow"
+      Action:
+        - "iam:CreateAccessKey"
+        - "iam:CreateUser"
+        # ... other permissions
+      Resource: "*"
+```
+
+To modify the policy:
+1. Edit `group_vars/all.yml`
+2. Update the `cco_iam_policy_document` section
+3. The changes will be applied on the next playbook run
+
+## Usage
+
+### Basic Usage
+
+The playbook can be run with default values or with custom parameters:
+
+```bash
+# Using defaults (aws_profile="default", kubeconfig_path="~/.kube/config")
+ansible-playbook main.yml
+
+# Or with custom values
+ansible-playbook main.yml \
+  -e "kubeconfig_path=/path/to/your/kubeconfig" \
+  -e "aws_profile=your-aws-profile"
+```
+
+### Example
+
+```bash
+# Using defaults
+ansible-playbook main.yml
+
+# Using custom AWS profile but default kubeconfig location
+ansible-playbook main.yml -e "aws_profile=ocp-admin"
+
+# Using custom values for both
+ansible-playbook main.yml \
+  -e "kubeconfig_path=/home/user/.kube/config" \
+  -e "aws_profile=ocp-admin"
+```
+
+### Running Specific Parts
+
+Use tags to run only specific parts of the playbook:
+
+```bash
+# Only AWS operations
+ansible-playbook main.yml -e "..." --tags aws
+
+# Only Kubernetes operations
+ansible-playbook main.yml -e "..." --tags kubernetes
+
+# Only cleanup
+ansible-playbook main.yml -e "..." --tags cleanup
+```
+
+## Verification
+
+After running the playbook, verify the rotation was successful:
+
+1. Check CCO logs:
+```bash
+oc logs -n openshift-cloud-credential-operator deployment/cloud-credential-operator -f
+```
+
+2. Verify component secrets are recreated:
+```bash
+oc get credentialsrequest -n openshift-cloud-credential-operator
+```
+
+3. Check that all AWS services are working properly in your cluster.
+
+## Security Considerations
+
+- All sensitive credentials are handled securely with `no_log: true`
+- Credentials are never stored in plain text files
+- Old access keys are automatically deleted after successful rotation
+- Use secure storage for kubeconfig files
+
+## Troubleshooting
+
+### Common Issues
+
+1. **"IAM user not found"**
+   - Ensure the OpenShift cluster is properly configured with CCO in mint mode
+   - Verify the cluster infrastructure name matches the IAM user suffix
+
+2. **"aws-creds secret not found"**
+   - Check that CCO is running and properly configured
+   - Verify the cluster is in mint mode (not STS/manual mode)
+
+3. **"Permission denied"**
+   - Verify AWS profile has the required IAM permissions
+   - Check that kubeconfig has cluster-admin permissions
+
+4. **"Component secrets not recreated"**
+   - Monitor CCO logs for errors
+   - Check CredentialsRequest resources for issues
+
+### Logs
+
+Check the following logs for troubleshooting:
+- CCO logs: `oc logs -n openshift-cloud-credential-operator deployment/cloud-credential-operator`
+- Ansible verbose output: Add `-v`, `-vv`, or `-vvv` to the playbook command
+
+## Project Structure
+
+```
+creds_rotation_2.0/
+├── main.yml                              # Main playbook
+├── requirements.yml                      # Ansible collections
+├── group_vars/
+│   └── all.yml                          # Common variables
+├── roles/
+│   ├── aws_cco_rotation/
+│   │   └── tasks/
+│   │       ├── main.yml                 # AWS IAM operations
+│   │       └── cleanup.yml              # Old key cleanup
+│   └── k8s_secrets/
+│       └── tasks/
+│           └── main.yml                 # Kubernetes secret management
+└── README.md                            # This file
+```
+
+## Contributing
+
+1. Follow Ansible best practices
+2. Test changes in a non-production environment first
+3. Update documentation for any new features
+4. Ensure all sensitive operations use `no_log: true`
+
+## License
+
+[Add your license here]
+
+## Support
+
+For issues and questions:
+- Check the troubleshooting section above
+- Review OpenShift CCO documentation
+- Consult AWS IAM documentation 

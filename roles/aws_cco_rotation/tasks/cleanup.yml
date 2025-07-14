@@ -1,0 +1,22 @@
+---
+# AWS CCO Rotation Role - Cleanup Tasks
+# This file contains verification tasks to be run after successful secret rotation
+
+- name: Get final access keys list
+  amazon.aws.iam_access_key_info:
+    user_name: "{{ iam_user_name }}"
+  register: final_access_keys
+
+- name: Display final access keys count
+  debug:
+    msg: "IAM user {{ iam_user_name }} now has {{ final_access_keys.access_keys | length }} access key(s)"
+
+- name: Verify exactly one access key exists
+  debug:
+    msg: "✅ Credential rotation completed successfully - exactly 1 access key exists for {{ iam_user_name }}"
+  when: final_access_keys.access_keys | length == 1
+
+- name: Warning if unexpected number of access keys
+  debug:
+    msg: "⚠️  WARNING: Expected exactly 1 access key but found {{ final_access_keys.access_keys | length }} for user {{ iam_user_name }}"
+  when: final_access_keys.access_keys | length != 1 

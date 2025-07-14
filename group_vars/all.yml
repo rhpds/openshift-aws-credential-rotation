@@ -1,0 +1,50 @@
+---
+# Common variables for OCP CCO credential rotation
+# These can be overridden by command line variables
+
+# Default values for common parameters
+# Override these with -e "variable=value" if needed
+aws_profile: "default"
+kubeconfig_path: "{{ lookup('env', 'HOME') }}/.kube/config"
+
+# AWS-related variables
+aws_iam_user_prefix: "ocp-credential-manager"
+aws_region: "us-east-1"  # Default region, can be overridden
+
+# OpenShift-related variables
+openshift_aws_creds_secret_name: "aws-creds"
+openshift_aws_creds_secret_namespace: "kube-system"
+openshift_cco_namespace: "openshift-cloud-credential-operator"
+
+# Timeout settings (in seconds)
+k8s_wait_timeout: 300
+k8s_wait_sleep: 10
+
+# Retry settings
+max_retries: 3
+retry_delay: 5
+
+# Security settings
+# Ensure sensitive data is not logged
+ansible_no_log: true
+
+# IAM Policy Configuration, taken from the documentation:
+# https://docs.redhat.com/en/documentation/openshift_container_platform/4.12/html/authentication_and_authorization/managing-cloud-provider-credentials#mint-mode-permissions-aws
+cco_iam_policy_name: "CCOCredentialRotationPolicy"
+cco_iam_policy_document:
+  Version: "2012-10-17"
+  Statement:
+    - Effect: "Allow"
+      Action:
+        - "iam:CreateAccessKey"      # Create new access keys for component users
+        - "iam:CreateUser"           # Create component IAM users
+        - "iam:DeleteAccessKey"      # Remove old access keys
+        - "iam:DeleteUser"           # Clean up component users if needed
+        - "iam:DeleteUserPolicy"     # Remove policies from users
+        - "iam:GetUser"              # Verify user existence and details
+        - "iam:GetUserPolicy"        # Read current user policies
+        - "iam:ListAccessKeys"       # List existing access keys for rotation
+        - "iam:PutUserPolicy"        # Attach policies to component users
+        - "iam:TagUser"              # Tag users for identification/management
+        - "iam:SimulatePrincipalPolicy"  # Test policy effectiveness
+      Resource: "*" 

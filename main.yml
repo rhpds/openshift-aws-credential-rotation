@@ -1,0 +1,97 @@
+---
+# Main playbook for OCP CCO credential rotation in AWS
+# This playbook automates the process of rotating AWS credentials for OpenShift
+# Cloud Credential Operator (CCO) in mint mode
+
+- name: OCP CCO Credential Rotation
+  hosts: localhost
+  gather_facts: false
+  vars:
+    # These variables should be passed via command line using -e
+    # kubeconfig_path: "/path/to/kubeconfig"
+    # aws_profile: "myprofile"
+    
+    # Internal variables (do not modify)
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+    
+  environment:
+    # Set AWS profile for all AWS operations
+    AWS_PROFILE: "{{ aws_profile }}"
+    # Set kubeconfig for all Kubernetes operations
+    KUBECONFIG: "{{ kubeconfig_path }}"
+    
+  pre_tasks:
+    - name: Display configuration being used
+      debug:
+        msg: |
+          Configuration:
+          - AWS Profile: {{ aws_profile }}
+          - Kubeconfig Path: {{ kubeconfig_path }}
+          
+    - name: Validate required variables are not empty
+      fail:
+        msg: "{{ item }} cannot be empty. Please provide it using -e '{{ item }}=value'"
+      when: vars[item] == ""
+      loop:
+        - kubeconfig_path
+        - aws_profile
+        
+    - name: Verify kubeconfig file exists
+      stat:
+        path: "{{ kubeconfig_path }}"
+      register: kubeconfig_stat
+      
+    - name: Fail if kubeconfig doesn't exist
+      fail:
+        msg: "Kubeconfig file not found at {{ kubeconfig_path }}"
+      when: not kubeconfig_stat.stat.exists
+      
+    - name: Test AWS connectivity and validate profile
+      amazon.aws.aws_caller_info:
+      register: aws_caller_info
+      
+    - name: Display AWS caller information
+      debug:
+        msg: "AWS Profile {{ aws_profile }} validated. Connected as: {{ aws_caller_info.arn }}"
+      
+    - name: Test OpenShift connectivity
+      kubernetes.core.k8s_info:
+        api_version: config.openshift.io/v1
+        kind: Infrastructure
+        name: cluster
+      register: cluster_info
+      
+    - name: Display cluster information
+      debug:
+        msg: "Connected to OpenShift cluster: {{ cluster_info.resources[0].status.infrastructureName }}"
+      when: cluster_info.resources | length > 0
+
+  roles:
+    - role: aws_cco_rotation
+      tags: [aws, credentials]
+      
+    - role: k8s_secrets
+      tags: [kubernetes, secrets]
+
+  tasks:
+    - name: Verify final AWS access key state
+      include_tasks: roles/aws_cco_rotation/tasks/cleanup.yml
+      tags: [aws, verification]
+      
+  post_tasks:
+    - name: Credential rotation completed successfully
+      debug:
+        msg: |
+          AWS CCO credential rotation completed successfully!
+          - All old AWS access keys deleted for {{ iam_user_name }}
+          - New AWS credentials generated for {{ iam_user_name }}
+          - OpenShift aws-creds secret updated
+          - Component secrets deleted to trigger CCO rotation
+          
+    - name: Important reminder
+      debug:
+        msg: |
+          IMPORTANT: Monitor the Cloud Credential Operator logs to ensure
+          all component credentials are properly recreated:
+          
+          oc logs -n openshift-cloud-credential-operator deployment/cloud-credential-operator -f 

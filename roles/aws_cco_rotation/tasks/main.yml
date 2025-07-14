@@ -1,0 +1,91 @@
+---
+# AWS CCO Rotation Role - Main Tasks
+# This role handles all AWS IAM interactions for credential rotation
+
+- name: Get OCP cluster infrastructure (GUID)
+  kubernetes.core.k8s_info:
+    api_version: config.openshift.io/v1
+    kind: Infrastructure
+    name: cluster
+  register: cluster_infrastructure_info
+
+- name: Extract cluster name from cluster infrastructure
+  set_fact:
+    ocp_cluster_name: "{{ cluster_infrastructure_info.resources[0].status.infrastructureName }}"
+  when: cluster_infrastructure_info.resources | length > 0
+
+- name: Fail if cluster name could not be determined
+  fail:
+    msg: "Unable to determine OpenShift cluster infrastructure name"
+  when: ocp_cluster_name is not defined
+
+- name: Construct IAM user name
+  set_fact:
+    iam_user_name: "{{ aws_iam_user_prefix }}-{{ ocp_cluster_name }}"
+
+- name: Display IAM user that will be rotated
+  debug:
+    msg: "Will rotate credentials for IAM user: {{ iam_user_name }}"
+
+- name: Ensure IAM user exists
+  amazon.aws.iam_user:
+    name: "{{ iam_user_name }}"
+    state: present
+  register: iam_user_creation
+
+- name: Display IAM user creation result
+  debug:
+    msg: |
+      {% if iam_user_creation.changed %}
+      ✅ Created new IAM user: {{ iam_user_name }}
+      {% else %}
+      ✅ IAM user already exists: {{ iam_user_name }}
+      {% endif %}
+
+- name: Attach CCO permissions policy to IAM user
+  amazon.aws.iam_policy:
+    iam_type: user
+    iam_name: "{{ iam_user_name }}"
+    policy_name: "{{ cco_iam_policy_name }}"
+    state: present
+    policy_json: "{{ cco_iam_policy_document | to_json }}"
+
+- name: Get existing AWS access keys for IAM user
+  amazon.aws.iam_access_key_info:
+    user_name: "{{ iam_user_name }}"
+  register: existing_access_keys
+
+- name: Display current access keys count
+  debug:
+    msg: "Found {{ existing_access_keys.access_keys | length }} existing access keys for user {{ iam_user_name }}"
+
+- name: Delete all existing access keys for IAM user
+  amazon.aws.iam_access_key:
+    user_name: "{{ iam_user_name }}"
+    id: "{{ item.access_key_id }}"
+    state: absent
+  loop: "{{ existing_access_keys.access_keys }}"
+  when: existing_access_keys.access_keys | length > 0
+
+- name: Create new AWS access key for IAM user
+  amazon.aws.iam_access_key:
+    user_name: "{{ iam_user_name }}"
+    state: present
+  register: new_aws_creds
+  no_log: true
+
+- name: Verify new access key was created
+  debug:
+    msg: "New access key created successfully for user {{ iam_user_name }}"
+  when: new_aws_creds.access_key is defined
+
+- name: Base64 encode new AWS credentials
+  set_fact:
+    new_access_key_id_b64: "{{ new_aws_creds.access_key_id | b64encode }}"
+    new_secret_access_key_b64: "{{ new_aws_creds.secret_access_key | b64encode }}"
+  no_log: true
+
+- name: Confirm all old access keys deleted
+  debug:
+    msg: "Deleted {{ existing_access_keys.access_keys | length }} existing access keys for user {{ iam_user_name }}"
+  when: existing_access_keys.access_keys | length > 0 

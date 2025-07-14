@@ -1,0 +1,92 @@
+---
+# K8s Secrets Role - Main Tasks
+# This role handles all Kubernetes secret management for CCO credential rotation
+
+- name: Check if aws-creds secret exists
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: "{{ openshift_aws_creds_secret_name }}"
+    namespace: "{{ openshift_aws_creds_secret_namespace }}"
+  register: aws_creds_secret_info
+
+- name: Fail if aws-creds secret doesn't exist
+  fail:
+    msg: |
+      The aws-creds secret does not exist in namespace {{ openshift_aws_creds_secret_namespace }}.
+      This secret should be managed by the Cloud Credential Operator.
+      Please ensure CCO is properly configured in mint mode.
+  when: aws_creds_secret_info.resources | length == 0
+
+- name: Display aws-creds secret found
+  debug:
+    msg: "Found aws-creds secret in namespace {{ openshift_aws_creds_secret_namespace }}"
+
+- name: Update the aws-creds secret with new credentials
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Secret
+    name: "{{ openshift_aws_creds_secret_name }}"
+    namespace: "{{ openshift_aws_creds_secret_namespace }}"
+    definition:
+      data:
+        aws_access_key_id: "{{ new_access_key_id_b64 }}"
+        aws_secret_access_key: "{{ new_secret_access_key_b64 }}"
+    state: present
+    merge_type: merge
+  no_log: true
+
+- name: Verify aws-creds secret was updated
+  debug:
+    msg: "Successfully updated aws-creds secret with new credentials"
+
+- name: Get all CredentialsRequests for AWS
+  kubernetes.core.k8s_info:
+    api_version: cloudcredential.openshift.io/v1
+    kind: CredentialsRequest
+    namespace: "{{ openshift_cco_namespace }}"
+  register: credentials_requests
+
+- name: Filter AWS CredentialsRequests
+  set_fact:
+    aws_credentials_requests: "{{ credentials_requests.resources | selectattr('spec.providerSpec.kind', 'equalto', 'AWSProviderSpec') | list }}"
+
+- name: Extract component secrets info
+  set_fact:
+    component_secrets_list: "{{ aws_credentials_requests | map(attribute='spec.secretRef') | list }}"
+
+- name: Display component secrets that will be deleted
+  debug:
+    msg: "Found {{ component_secrets_list | length }} component secrets to delete for CCO rotation"
+
+- name: Delete each component secret to trigger CCO rotation
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Secret
+    name: "{{ item.name }}"
+    namespace: "{{ item.namespace }}"
+    state: absent
+  loop: "{{ component_secrets_list }}"
+  when: component_secrets_list | length > 0
+
+- name: Confirm component secrets deletion
+  debug:
+    msg: "Deleted {{ component_secrets_list | length }} component secrets. CCO will recreate them with new credentials."
+
+- name: Wait for CCO to start recreating secrets
+  pause:
+    seconds: 10
+    prompt: "Waiting for Cloud Credential Operator to detect changes..."
+
+- name: Check CCO deployment status
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: cloud-credential-operator
+    namespace: "{{ openshift_cco_namespace }}"
+  register: cco_deployment
+
+- name: Display CCO status
+  debug:
+    msg: "CCO deployment status: {{ cco_deployment.resources[0].status.conditions | selectattr('type', 'equalto', 'Available') | map(attribute='status') | first }}"
+  when: cco_deployment.resources | length > 0 
