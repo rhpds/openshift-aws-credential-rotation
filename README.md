@@ -4,6 +4,32 @@ This Ansible project automates the credential rotation process for OpenShift Con
 
 The steps outlined in the documentation can be found [here](https://docs.redhat.com/en/documentation/openshift_container_platform/4.12/html/authentication_and_authorization/managing-cloud-provider-credentials#mint-mode-with-removal-or-rotation-of-admin-credential_cco-mode-mint)
 
+## Table of Contents
+* [Overview](#overview)
+* [Prerequisites](#prerequisites)
+  * [OpenShift Cluster Requirements](#1-openshift-cluster-requirements)
+  * [AWS Requirements](#2-aws-requirements)
+  * [System Requirements](#3-system-requirements)
+* [Installation](#installation)
+* [IAM Permissions](#iam-permissions)
+  * [AWS Profile Permissions](#aws-profile-permissions)
+  * [CCO IAM User Permissions](#cco-iam-user-permissions)
+* [Configuration](#configuration)
+  * [IAM Policy Customization](#iam-policy-customization)
+* [Usage](#usage)
+  * [Basic Usage](#basic-usage)
+  * [Example](#example)
+  * [Running Specific Parts](#running-specific-parts)
+* [Verification](#verification)
+* [Security Considerations](#security-considerations)
+* [Troubleshooting](#troubleshooting)
+  * [Common Issues](#common-issues)
+  * [Logs](#logs)
+* [Project Structure](#project-structure)
+* [Contributing](#contributing)
+* [License](#license)
+* [Support](#support)
+
 ## Overview
 
 This automation handles the complete credential rotation workflow:
