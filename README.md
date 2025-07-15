@@ -8,8 +8,8 @@ The steps outlined in the documentation can be found [here](https://docs.redhat.
 
 This automation handles the complete credential rotation workflow:
 
-1. Discovers the current IAM identity from the `aws_access_key_id` in the `aws-creds` secret
-2. Deletes the old IAM user entirely (standardizing on `ocp-credential-manager-<GUID>` naming)
+1. Discovers the current IAM identity by finding which IAM user owns the `aws_access_key_id` in the `aws-creds` secret
+2. Deletes the old IAM user entirely (regardless of naming convention)
 3. Creates the standardized `ocp-credential-manager-<GUID>` IAM user with proper CCO permissions
 4. Generates new AWS access key for the `ocp-credential-manager-<GUID>` IAM user
 5. Updates the `aws-creds` secret in the `kube-system` namespace with the new IAM access key
@@ -67,7 +67,7 @@ The playbook uses the following collections:
 ## IAM Permissions
 
 ### AWS Profile Permissions
-The AWS profile specified in `aws_profile` must have the following permissions on the `ocp-credential-manager-<GUID>` IAM user:
+The AWS profile specified in `aws_profile` must have the following permissions to manage IAM users and perform credential rotation:
 
 ```json
 {
@@ -76,16 +76,31 @@ The AWS profile specified in `aws_profile` must have the following permissions o
         {
             "Effect": "Allow",
             "Action": [
+                "iam:ListUsers",
                 "iam:ListAccessKeys",
+                "iam:CreateUser",
+                "iam:DeleteUser",
                 "iam:CreateAccessKey",
                 "iam:DeleteAccessKey",
-                "iam:GetUser"
+                "iam:GetUser",
+                "iam:AttachUserPolicy",
+                "iam:PutUserPolicy"
             ],
-            "Resource": "arn:aws:iam::*:user/ocp-credential-manager-*"
+            "Resource": "*"
         }
     ]
 }
 ```
+
+**Why these permissions are needed:**
+- `iam:ListUsers` - To discover all IAM users and find the one associated with the current access key
+- `iam:ListAccessKeys` - To check access keys for each user during discovery
+- `iam:CreateUser` - To create the new standardized IAM user
+- `iam:DeleteUser` - To delete the old IAM user (which may not follow the naming pattern)
+- `iam:CreateAccessKey` - To generate new access keys for the IAM user
+- `iam:DeleteAccessKey` - To clean up old access keys
+- `iam:GetUser` - To verify user existence and get user details
+- `iam:AttachUserPolicy`/`iam:PutUserPolicy` - To attach the CCO policy to the IAM user
 
 ### CCO IAM User Permissions
 The `ocp-credential-manager-<GUID>` IAM user will have the following permissions for CCO operations according to the [official documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/4.12/html/authentication_and_authorization/managing-cloud-provider-credentials#mint-mode-permissions-aws):
