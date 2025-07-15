@@ -23,9 +23,73 @@
   set_fact:
     iam_user_name: "{{ aws_iam_user_prefix }}-{{ ocp_cluster_name }}"
 
-- name: Display IAM user that will be rotated
+- name: Get current aws-creds secret
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: aws-creds
+    namespace: kube-system
+  register: current_aws_creds_secret
+
+- name: Extract current access key ID from aws-creds secret
+  set_fact:
+    current_access_key_id: "{{ current_aws_creds_secret.resources[0].data.aws_access_key_id | b64decode }}"
+  when: 
+    - current_aws_creds_secret.resources | length > 0
+    - current_aws_creds_secret.resources[0].data.aws_access_key_id is defined
+
+- name: Discovery and cleanup of old IAM user
+  block:
+    - name: Get all IAM users to find access key owner
+      amazon.aws.iam_user_info:
+      register: all_iam_users
+
+    - name: Find IAM user associated with current access key
+      amazon.aws.iam_access_key_info:
+        user_name: "{{ item.user_name }}"
+      register: user_access_keys_check
+      loop: "{{ all_iam_users.iam_users | default([]) }}"
+      loop_control:
+        label: "{{ item.user_name }}"
+      ignore_errors: true
+      
+    - name: Set matching user when found
+      set_fact:
+        current_iam_user_name: "{{ item.item.user_name }}"
+      loop: "{{ user_access_keys_check.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item.user_name | default('N/A') }}"
+      when:
+        - item.access_keys is defined
+        - item.access_keys | length > 0
+        - current_access_key_id in item.access_keys | map(attribute='access_key_id')
+        - not item.failed | default(false)
+        - current_iam_user_name is not defined
+
+    - name: Display discovered current IAM user
+      debug:
+        msg: "✅ Found current IAM user {{ current_iam_user_name }} associated with access key"
+      when: current_iam_user_name is defined
+
+    - name: Delete old IAM user
+      amazon.aws.iam_user:
+        name: "{{ current_iam_user_name }}"
+        state: absent
+      when: current_iam_user_name is defined
+      register: old_user_deletion
+
+    - name: Display cleanup of old IAM user
+      debug:
+        msg: "✅ Deleted old IAM user {{ current_iam_user_name }} (will recreate as {{ iam_user_name }})"
+      when: 
+        - old_user_deletion is defined
+        - old_user_deletion.changed
+
+  when: current_access_key_id is defined
+
+- name: Display standardized IAM user that will be used
   debug:
-    msg: "Will rotate credentials for IAM user: {{ iam_user_name }}"
+    msg: "Will create/use standardized IAM user: {{ iam_user_name }}"
 
 - name: Ensure IAM user exists
   amazon.aws.iam_user:
@@ -50,24 +114,7 @@
     state: present
     policy_json: "{{ cco_iam_policy_document | to_json }}"
 
-- name: Get existing AWS access keys for IAM user
-  amazon.aws.iam_access_key_info:
-    user_name: "{{ iam_user_name }}"
-  register: existing_access_keys
-
-- name: Display current access keys count
-  debug:
-    msg: "Found {{ existing_access_keys.access_keys | length }} existing access keys for user {{ iam_user_name }}"
-
-- name: Ensure all existing access keys for IAM user are deleted
-  amazon.aws.iam_access_key:
-    user_name: "{{ iam_user_name }}"
-    id: "{{ item.access_key_id }}"
-    state: absent
-  loop: "{{ existing_access_keys.access_keys }}"
-  when: existing_access_keys.access_keys | length > 0
-
-- name: Ensure new AWS access key is created for IAM user
+- name: Create new AWS access key for standardized IAM user
   amazon.aws.iam_access_key:
     user_name: "{{ iam_user_name }}"
     state: present
@@ -84,8 +131,4 @@
     new_access_key_id_b64: "{{ new_aws_creds.access_key_id | b64encode }}"
     new_secret_access_key_b64: "{{ new_aws_creds.secret_access_key | b64encode }}"
   no_log: true
-
-- name: Verify all old access keys deleted
-  debug:
-    msg: "Deleted {{ existing_access_keys.access_keys | length }} existing access keys for user {{ iam_user_name }}"
-  when: existing_access_keys.access_keys | length > 0 
+  

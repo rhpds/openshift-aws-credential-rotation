@@ -7,11 +7,13 @@ The steps outlined in the documentation can be found [here](https://docs.redhat.
 ## Overview
 
 This automation handles the complete credential rotation workflow:
-1. Retrieves the OpenShift cluster infrastructure name (GUID)
-2. Cleans up the old AWS access key for the `ocp-credential-manager-<GUID>` IAM user
-3. Generates new AWS access keys for the `ocp-credential-manager-<GUID>` IAM user
-4. Updates the `aws-creds` secret in the `kube-system` namespace with the new key
-5. Deletes all secret components in OCP to trigger CCO rotation
+
+1. Discovers the current IAM identity from the `aws_access_key_id` in the `aws-creds` secret
+2. Deletes the old IAM user entirely (standardizing on `ocp-credential-manager-<GUID>` naming)
+3. Creates the standardized `ocp-credential-manager-<GUID>` IAM user with proper CCO permissions
+4. Generates new AWS access key for the `ocp-credential-manager-<GUID>` IAM user
+5. Updates the `aws-creds` secret in the `kube-system` namespace with the new IAM access key
+6. Deletes all secret components in OCP to trigger CCO rotation
 
 ## Prerequisites
 
