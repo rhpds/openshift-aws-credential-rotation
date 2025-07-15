@@ -2,26 +2,6 @@
 # K8s Secrets Role - Main Tasks
 # This role handles all Kubernetes secret management for CCO credential rotation
 
-- name: Check if aws-creds secret exists
-  kubernetes.core.k8s_info:
-    api_version: v1
-    kind: Secret
-    name: "{{ openshift_aws_creds_secret_name }}"
-    namespace: "{{ openshift_aws_creds_secret_namespace }}"
-  register: aws_creds_secret_info
-
-- name: Fail if aws-creds secret doesn't exist
-  fail:
-    msg: |
-      The aws-creds secret does not exist in namespace {{ openshift_aws_creds_secret_namespace }}.
-      This secret should be managed by the Cloud Credential Operator.
-      Please ensure CCO is properly configured in mint mode.
-  when: aws_creds_secret_info.resources | length == 0
-
-- name: Display aws-creds secret found
-  debug:
-    msg: "Found aws-creds secret in namespace {{ openshift_aws_creds_secret_namespace }}"
-
 - name: Update the aws-creds secret with new credentials
   kubernetes.core.k8s:
     api_version: v1
