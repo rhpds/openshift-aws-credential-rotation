@@ -22,14 +22,14 @@
     
   pre_tasks:
     - name: Display configuration being used
-      debug:
+      ansible.builtin.debug:
         msg: |-
           Configuration:
           - AWS Profile: {{ aws_profile }}
           - Kubeconfig Path: {{ kubeconfig_path }}
           
     - name: Validate required variables are not empty
-      fail:
+      ansible.builtin.fail:
         msg: "{{ item }} cannot be empty. Please provide it using -e '{{ item }}=value'"
       when: vars[item] == ""
       loop:
@@ -37,12 +37,12 @@
         - aws_profile
         
     - name: Verify kubeconfig file exists
-      stat:
+      ansible.builtin.stat:
         path: "{{ kubeconfig_path }}"
       register: kubeconfig_stat
       
     - name: Fail if kubeconfig doesn't exist
-      fail:
+      ansible.builtin.fail:
         msg: "Kubeconfig file not found at {{ kubeconfig_path }}"
       when: not kubeconfig_stat.stat.exists
       
@@ -51,7 +51,7 @@
       register: aws_caller_info
       
     - name: Display AWS caller information
-      debug:
+      ansible.builtin.debug:
         msg: "AWS Profile {{ aws_profile }} validated. Connected as: {{ aws_caller_info.arn }}"
       
     - name: Test OpenShift connectivity
@@ -62,7 +62,7 @@
       register: cluster_info
       
     - name: Display cluster information
-      debug:
+      ansible.builtin.debug:
         msg: "Connected to OpenShift cluster: {{ cluster_info.resources[0].status.infrastructureName }}"
       when: cluster_info.resources | length > 0
 
@@ -75,7 +75,7 @@
       
   post_tasks:
     - name: Credential rotation completed successfully
-      debug:
+      ansible.builtin.debug:
         msg: |-
           AWS CCO credential rotation completed successfully!
           - All old AWS access keys deleted for {{ iam_user_name }}
@@ -84,7 +84,7 @@
           - Component secrets deleted to trigger CCO rotation
           
     - name: Important reminder
-      debug:
+      ansible.builtin.debug:
         msg: |-
           IMPORTANT: You can monitor the Cloud Credential Operator logs to ensure
           all component credentials are properly recreated:
@@ -92,7 +92,7 @@
           oc logs -n openshift-cloud-credential-operator deployment/cloud-credential-operator -f
           
     - name: Prompt for CCO IAM user and secret cleanup
-      pause:
+      ansible.builtin.pause:
         prompt: |-
           
           SECURITY RECOMMENDATION: The {{ iam_user_name }} user has broad permissions that are
@@ -124,7 +124,7 @@
       when: delete_cco_resources_response.user_input | lower == 'y'
       
     - name: Confirm CCO resources deletion
-      debug:
+      ansible.builtin.debug:
         msg: |-
           ✅ CCO resources deleted successfully for security:
           {% if cco_user_deletion.changed %}
@@ -141,7 +141,7 @@
         - (cco_user_deletion.changed or cco_secret_deletion.changed)
         
     - name: CCO resources cleanup skipped
-      debug:
+      ansible.builtin.debug:
         msg: |-
           {{ iam_user_name }} user and aws-creds secret cleanup skipped. 
           

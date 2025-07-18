@@ -24,15 +24,15 @@
   register: credentials_requests
 
 - name: Filter AWS CredentialsRequests
-  set_fact:
+  ansible.builtin.set_fact:
     aws_credentials_requests: "{{ credentials_requests.resources | selectattr('spec.providerSpec.kind', 'equalto', 'AWSProviderSpec') | list }}"
 
 - name: Extract component secrets info
-  set_fact:
+  ansible.builtin.set_fact:
     component_secrets_list: "{{ aws_credentials_requests | map(attribute='spec.secretRef') | list }}"
 
 - name: Display component secrets that will be deleted
-  debug:
+  ansible.builtin.debug:
     msg: "Found {{ component_secrets_list | length }} component secrets to delete for CCO rotation"
 
 - name: Delete each component secret to trigger CCO rotation
@@ -46,7 +46,7 @@
   when: component_secrets_list | length > 0
 
 - name: Wait for CCO to start recreating secrets
-  pause:
+  ansible.builtin.pause:
     seconds: 10
     prompt: "Waiting for Cloud Credential Operator to detect changes..."
 
@@ -59,6 +59,6 @@
   register: cco_deployment
 
 - name: Display CCO status
-  debug:
+  ansible.builtin.debug:
     msg: "CCO deployment status: {{ cco_deployment.resources[0].status.conditions | selectattr('type', 'equalto', 'Available') | map(attribute='status') | first }}"
   when: cco_deployment.resources | length > 0 
