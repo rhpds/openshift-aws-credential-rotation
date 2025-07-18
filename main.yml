@@ -91,7 +91,60 @@
           
           oc logs -n openshift-cloud-credential-operator deployment/cloud-credential-operator -f
           
-          SECURITY NOTE: After completing cluster operations (upgrades, etc.),
-          delete the access key from IAM user {{ iam_user_name }} for security, either from the console or using the following command:
+    - name: Prompt for CCO IAM user and secret cleanup
+      pause:
+        prompt: |-
           
-          aws iam delete-access-key --user-name {{ iam_user_name }} --access-key-id <ACCESS_KEY_ID> 
+          SECURITY RECOMMENDATION: The {{ iam_user_name }} user has broad permissions that are
+          only needed for initial setup and cluster upgrades. For enhanced security, both the
+          IAM user and the aws-creds secret should be deleted after CCO has created all 
+          component-specific IAM users.
+          
+          The {{ iam_user_name }} user and secret can be recreated when needed for cluster upgrades by running this playbook again.
+          
+          Would you like to delete the {{ iam_user_name }} user and aws-creds secret now? (y/N)
+      register: delete_cco_resources_response
+      
+    - name: Delete CCO IAM user and aws-creds secret
+      block:
+        - name: Delete CCO IAM user
+          amazon.aws.iam_user:
+            name: "{{ iam_user_name }}"
+            state: absent
+          register: cco_user_deletion
+          
+        - name: Delete aws-creds secret
+          kubernetes.core.k8s:
+            api_version: v1
+            kind: Secret
+            name: "{{ openshift_aws_creds_secret_name }}"
+            namespace: "{{ openshift_aws_creds_secret_namespace }}"
+            state: absent
+          register: cco_secret_deletion
+      when: delete_cco_resources_response.user_input | lower == 'y'
+      
+    - name: Confirm CCO resources deletion
+      debug:
+        msg: |-
+          ✅ CCO resources deleted successfully for security:
+          {% if cco_user_deletion.changed %}
+          - {{ iam_user_name }} IAM user deleted
+          {% endif %}
+          {% if cco_secret_deletion.changed %}
+          - aws-creds secret deleted from {{ openshift_aws_creds_secret_namespace }} namespace
+          {% endif %}
+          
+          IMPORTANT: You will need to recreate these resources before cluster upgrades.
+          You can run this playbook again when upgrades are needed.
+      when: 
+        - delete_cco_resources_response.user_input | lower == 'y'
+        - (cco_user_deletion.changed or cco_secret_deletion.changed)
+        
+    - name: CCO resources cleanup skipped
+      debug:
+        msg: |-
+          {{ iam_user_name }} user and aws-creds secret cleanup skipped. 
+          
+          SECURITY NOTE: Consider deleting these resources manually after confirming all 
+          component credentials are working properly to reduce attack surface.
+      when: delete_cco_resources_response.user_input | lower != 'y' 
