@@ -36,7 +36,7 @@ This automation handles the complete credential rotation workflow:
 3. Creates the standardized `ocp-credential-manager-<GUID>` IAM user with proper CCO permissions
 4. Generates new AWS access key for the `ocp-credential-manager-<GUID>` IAM user
 5. Updates the `aws-creds` secret in the `kube-system` namespace with the new IAM access key
-6. Deletes all secret components in OCP to trigger CCO rotation
+6. Deletes all secret components in OCP to trigger CCO rotation, verifies that all component secrets are re-created
 
 ## Prerequisites
 
