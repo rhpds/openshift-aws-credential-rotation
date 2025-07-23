@@ -7,15 +7,12 @@ The steps outlined in the documentation can be found [here](https://docs.redhat.
 ## Table of Contents
 * [Overview](#overview)
 * [Prerequisites](#prerequisites)
-  * [OpenShift Cluster Requirements](#1-openshift-cluster-requirements)
-  * [AWS Requirements](#2-aws-requirements)
-  * [System Requirements](#3-system-requirements)
+  * [1. OpenShift Cluster Requirements](#1-openshift-cluster-requirements)
+  * [2. AWS Requirements](#2-aws-requirements)
+  * [3. System Requirements](#3-system-requirements)
 * [Installation](#installation)
 * [IAM Permissions](#iam-permissions)
-  * [AWS Profile Permissions](#aws-profile-permissions)
   * [CCO IAM User Permissions](#cco-iam-user-permissions)
-* [Configuration](#configuration)
-  * [IAM Policy Customization](#iam-policy-customization)
 * [Usage](#usage)
   * [Basic Usage](#basic-usage)
   * [Example](#example)
@@ -50,7 +47,41 @@ This automation handles the complete credential rotation workflow:
 
 ### 2. AWS Requirements
 - AWS CLI configured with appropriate profile
-- AWS profile with permissions to manage the CCO IAM user
+- AWS profile with permissions to manage the CCO IAM user and perform credential rotation:
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "iam:ListUsers",
+                "iam:ListAccessKeys",
+                "iam:CreateUser",
+                "iam:DeleteUser",
+                "iam:CreateAccessKey",
+                "iam:DeleteAccessKey",
+                "iam:GetUser",
+                "iam:AttachUserPolicy",
+                "iam:PutUserPolicy"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+```
+
+**Why these permissions are needed:**
+- `iam:ListUsers` - To discover all IAM users and find the one associated with the current access key
+- `iam:ListAccessKeys` - To check access keys for each user during discovery
+- `iam:CreateUser` - To create the new standardized IAM user
+- `iam:DeleteUser` - To delete the old IAM user (which may not follow the naming pattern)
+- `iam:CreateAccessKey` - To generate new access keys for the IAM user
+- `iam:DeleteAccessKey` - To clean up old access keys
+- `iam:GetUser` - To verify user existence and get user details
+- `iam:AttachUserPolicy`/`iam:PutUserPolicy` - To attach the CCO policy to the IAM user
+
 
 ### 3. System Requirements
 - Python 3.8+
@@ -92,42 +123,6 @@ The playbook uses the following collections:
 
 ## IAM Permissions
 
-### AWS Profile Permissions
-The AWS profile specified in `aws_profile` must have the following permissions to manage IAM users and perform credential rotation:
-
-```json
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "iam:ListUsers",
-                "iam:ListAccessKeys",
-                "iam:CreateUser",
-                "iam:DeleteUser",
-                "iam:CreateAccessKey",
-                "iam:DeleteAccessKey",
-                "iam:GetUser",
-                "iam:AttachUserPolicy",
-                "iam:PutUserPolicy"
-            ],
-            "Resource": "*"
-        }
-    ]
-}
-```
-
-**Why these permissions are needed:**
-- `iam:ListUsers` - To discover all IAM users and find the one associated with the current access key
-- `iam:ListAccessKeys` - To check access keys for each user during discovery
-- `iam:CreateUser` - To create the new standardized IAM user
-- `iam:DeleteUser` - To delete the old IAM user (which may not follow the naming pattern)
-- `iam:CreateAccessKey` - To generate new access keys for the IAM user
-- `iam:DeleteAccessKey` - To clean up old access keys
-- `iam:GetUser` - To verify user existence and get user details
-- `iam:AttachUserPolicy`/`iam:PutUserPolicy` - To attach the CCO policy to the IAM user
-
 ### CCO IAM User Permissions
 The `ocp-credential-manager-<GUID>` IAM user will have the following permissions for CCO operations according to the [official documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/4.12/html/authentication_and_authorization/managing-cloud-provider-credentials#mint-mode-permissions-aws):
 
@@ -155,10 +150,6 @@ The `ocp-credential-manager-<GUID>` IAM user will have the following permissions
     ]
 }
 ```
-
-## Configuration
-
-### IAM Policy Customization
 
 The CCO IAM policy is defined in `group_vars/all.yml` and can be customized if needed:
 
