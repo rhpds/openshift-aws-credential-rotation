@@ -81,15 +81,7 @@
           - All old AWS access keys deleted for {{ iam_user_name }}
           - New AWS credentials generated for {{ iam_user_name }}
           - OpenShift aws-creds secret updated
-          - Component secrets deleted to trigger CCO rotation
-          
-    - name: Important reminder
-      ansible.builtin.debug:
-        msg: |-
-          IMPORTANT: You can monitor the Cloud Credential Operator logs to ensure
-          all component credentials are properly recreated:
-          
-          oc logs -n openshift-cloud-credential-operator deployment/cloud-credential-operator -f
+          - Component secrets rotated by CCO
           
     - name: Prompt for CCO IAM user and secret cleanup
       ansible.builtin.pause:
