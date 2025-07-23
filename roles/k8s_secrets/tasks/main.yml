@@ -45,20 +45,16 @@
   loop: "{{ component_secrets_list }}"
   when: component_secrets_list | length > 0
 
-- name: Wait for CCO to start recreating secrets
-  ansible.builtin.pause:
-    seconds: 10
-    prompt: "Waiting for Cloud Credential Operator to detect changes..."
-
-- name: Get CCO deployment
+- name: Wait for component secrets to be recreated by CCO
   kubernetes.core.k8s_info:
-    api_version: apps/v1
-    kind: Deployment
-    name: cloud-credential-operator
-    namespace: "{{ openshift_cco_namespace }}"
-  register: cco_deployment
-
-- name: Display CCO status
-  ansible.builtin.debug:
-    msg: "CCO deployment status: {{ cco_deployment.resources[0].status.conditions | selectattr('type', 'equalto', 'Available') | map(attribute='status') | first }}"
-  when: cco_deployment.resources | length > 0 
+    api_version: v1
+    kind: Secret
+    name: "{{ item.name }}"
+    namespace: "{{ item.namespace }}"
+  register: recreated_secrets_data
+  loop: "{{ component_secrets_list }}"
+  when: component_secrets_list | length > 0
+  retries: 30
+  delay: 10
+  until: recreated_secrets_data.resources | length > 0
+  no_log: true
