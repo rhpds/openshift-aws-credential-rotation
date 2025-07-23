@@ -17,7 +17,6 @@ The steps outlined in the documentation can be found [here](https://docs.redhat.
   * [Basic Usage](#basic-usage)
   * [Example](#example)
   * [Running Specific Parts](#running-specific-parts)
-* [Verification](#verification)
 * [Security Considerations](#security-considerations)
 * [Troubleshooting](#troubleshooting)
   * [Common Issues](#common-issues)
@@ -217,27 +216,6 @@ ansible-playbook main.yml -e "..." --tags kubernetes
 # Only cleanup
 ansible-playbook main.yml -e "..." --tags cleanup
 ```
-
-## Verification
-
-After running the playbook, verify the rotation was successful:
-
-1. Check CCO logs:
-```bash
-oc logs -n openshift-cloud-credential-operator deployment/cloud-credential-operator -f
-```
-
-2. Verify component secrets are recreated:
-```bash
-oc get credentialsrequest -n openshift-cloud-credential-operator
-```
-
-3. For security reasons, you may want to delete the newly created access key for the root AWS credentials:
-```bash
-aws iam delete-access-key --user-name {{ iam_user_name }} --access-key-id <ACCESS_KEY_ID>
-```
-
-4. Check that all AWS services are working properly in your cluster.
 
 ## Security Considerations
 
