@@ -30,12 +30,13 @@ The steps outlined in the documentation can be found [here](https://docs.redhat.
 
 This automation handles the complete credential rotation workflow:
 
-1. Discovers the current IAM identity by finding which IAM user owns the `aws_access_key_id` in the `aws-creds` secret
-2. Deletes the old IAM user entirely (regardless of naming convention)
-3. Creates the standardized `ocp-credential-manager-<GUID>` IAM user with proper CCO permissions
+1. Discovers the current IAM "root" identity by finding which IAM user owns the `aws_access_key_id` in the `aws-creds` secret
+2. Deletes the old IAM user entirely
+3. Creates the standardized `ocp-credential-manager-<GUID>` IAM user with the proper CCO permissions
 4. Generates new AWS access key for the `ocp-credential-manager-<GUID>` IAM user
 5. Updates the `aws-creds` secret in the `kube-system` namespace with the new IAM access key
-6. Deletes all secret components in OCP froom AWS `credentials_requests` to trigger CCO rotation, verifies that all component secrets are re-created
+6. Deletes all secret components in OCP froom AWS `credentials_requests` to trigger CCO rotation
+7. verifies that all component secrets are re-created (And consequently rotated)
 
 ## Prerequisites
 
