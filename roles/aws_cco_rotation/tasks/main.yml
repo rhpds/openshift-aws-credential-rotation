@@ -38,52 +38,71 @@
     - current_aws_creds_secret.resources | length > 0
     - current_aws_creds_secret.resources[0].data.aws_access_key_id is defined
 
-- name: Discovery and cleanup of old IAM user
-  block:
-    - name: Get all IAM users to find access key owner
-      amazon.aws.iam_user_info:
-      register: all_iam_users
+- name: Discovery and cleanup of old IAM user 
 
+# No amazon.aws module can do a reverse lookup of the access key 
+# to the user name, but this can be achieved with the 
+# "get-access-key-last-used"a command which  is a bit of a hack...
+
+  block:
     - name: Find IAM user associated with current access key
-      amazon.aws.iam_access_key_info:
-        user_name: "{{ item.user_name }}"
-      register: user_access_keys_check
-      loop: "{{ all_iam_users.iam_users | default([]) }}"
-      loop_control:
-        label: "{{ item.user_name }}"
-      ignore_errors: true
-      
-    - name: Set matching user when found
+      ansible.builtin.command:
+        cmd: "aws iam get-access-key-last-used --access-key-id {{ current_access_key_id }} --profile {{ aws_profile }} --query 'UserName' --output text"
+      register: access_key_user_lookup
+      failed_when: access_key_user_lookup.rc != 0
+      changed_when: false
+
+    - name: Set current IAM user name from lookup result
       ansible.builtin.set_fact:
-        current_iam_user_name: "{{ item.item.user_name }}"
-      loop: "{{ user_access_keys_check.results | default([]) }}"
-      loop_control:
-        label: "{{ item.item.user_name | default('N/A') }}"
-      when:
-        - item.access_keys is defined
-        - item.access_keys | length > 0
-        - current_access_key_id in item.access_keys | map(attribute='access_key_id')
-        - not item.failed | default(false)
-        - current_iam_user_name is not defined
+        current_iam_user_name: "{{ access_key_user_lookup.stdout.strip() }}"
+      when: 
+        - access_key_user_lookup.stdout is defined
+        - access_key_user_lookup.stdout.strip() != ""
+        - access_key_user_lookup.stdout.strip() != "None"
 
     - name: Display discovered current IAM user
       ansible.builtin.debug:
         msg: "✅ Found current IAM user {{ current_iam_user_name }} associated with access key"
       when: current_iam_user_name is defined
 
+    - name: Prompt for old IAM user deletion
+      ansible.builtin.pause:
+        prompt: |-
+          
+          WARNING: The following IAM user will be deleted as part of the credential rotation:
+          
+          IAM User: {{ current_iam_user_name }}
+          
+          This user will be recreated with a standardized name ({{ iam_user_name }}) and new credentials.
+          All existing access keys for this user will be permanently removed. 
+          If the user to be deleted is "ocp-credential-manager-<GUID>" you can safely proceed.
+          
+          Do you want to continue with deleting {{ current_iam_user_name }}? (y/N)
+      register: delete_old_user_response
+      when: current_iam_user_name is defined
+
     - name: Delete old IAM user
       amazon.aws.iam_user:
         name: "{{ current_iam_user_name }}"
         state: absent
-      when: current_iam_user_name is defined
+      when: 
+        - current_iam_user_name is defined
+        - delete_old_user_response.user_input | default('') | lower == 'y'
       register: old_user_deletion
 
     - name: Display cleanup of old IAM user
       ansible.builtin.debug:
-        msg: "✅ Deleted old IAM user {{ current_iam_user_name }} (will recreate as {{ iam_user_name }})"
+        msg: "Deleted old IAM user {{ current_iam_user_name }} (will recreate as {{ iam_user_name }})"
       when: 
         - old_user_deletion is defined
         - old_user_deletion.changed
+
+    - name: Display skipped IAM user deletion
+      ansible.builtin.debug:
+        msg: "Skipped deletion of old IAM user {{ current_iam_user_name }} (user chose not to delete)"
+      when: 
+        - current_iam_user_name is defined
+        - delete_old_user_response.user_input | default('') | lower != 'y'
 
   when: current_access_key_id is defined
 
