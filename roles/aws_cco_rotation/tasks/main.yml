@@ -49,7 +49,7 @@
       ansible.builtin.command:
         cmd: "aws iam get-access-key-last-used --access-key-id {{ current_access_key_id }} --profile {{ aws_profile }} --query 'UserName' --output text"
       register: access_key_user_lookup
-      failed_when: access_key_user_lookup.rc != 0
+      failed_when: false
       changed_when: false
 
     - name: Set current IAM user name from lookup result
